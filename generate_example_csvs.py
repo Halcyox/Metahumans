@@ -14,11 +14,19 @@ from xragents import audio, utils, cast, simulator
 from xragents.types import Character
 
 def main():
+    # example_scene = scene.Scene(
+    #     id=random.randint(0, 10),
+    #     name="Avatar 3: The Search for More Money",
+    #     description="James Camerons' newest hit single, Avatar 3, unrelated in any way to the previous instantiations because GPT-4 has no persistence or mutability!",
+    #     characters=[cast.Avatar, cast.Avatar2, cast.KillerOfWorlds],
+    #     text_only=True,
+    # )
+
     example_scene = scene.Scene(
         id=random.randint(0, 10),
-        name="Avatar 3: The Search for More Money",
-        description="James Camerons' newest hit single, Avatar 3, unrelated in any way to the previous instantiations because GPT-4 has no persistence or mutability!",
-        characters=[cast.Avatar, cast.Avatar2, cast.KillerOfWorlds],
+        name="Conversation between Stewey from Family Guy and Average Redditor",
+        description="The following is an entertaining convo between Stewey from Family Guy and The Average Redditor about chocolate milk vs. hot chocolate.",
+        characters=[cast.AverageRedditor, cast.Stewey],
         text_only=True,
     )
 

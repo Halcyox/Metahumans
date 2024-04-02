@@ -1,6 +1,7 @@
 import collections
 import os
 import azure.cognitiveservices.speech as speechsdk
+import pydub
 from pydub import AudioSegment
 import time
 from pathlib import Path
@@ -10,8 +11,14 @@ from dataclasses import dataclass
 import typing
 import speech_recognition as sr
 import pyttsx3
-import time
-import os
+
+import wave
+import pyaudio
+import soundfile as sf
+import sys
+import re
+import librosa
+
 
 
 def generate_wav(text, speaker, lang=None,outputPath=None):
@@ -32,11 +39,143 @@ def generate_wav(text, speaker, lang=None,outputPath=None):
     speech_config.speech_synthesis_language = "en-US"
     speech_config.speech_synthesis_voice_name = speaker
 
+    ssml_string = f"""
+    <speak version='1.0' xmlns='http://www.w3.org/2001/10/synthesis' xml:lang='en-US' xmlns:mstts='http://www.w3.org/2001/mstts'>
+        <voice name='{speaker}'>
+            <mstts:express-as type='angry'>
+                {text}
+            </mstts:express-as>
+        </voice>
+    </speak>
+    """
+
     # Creates a speech synthesizer
     synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config, audio_config=audio_config)
-    synthesizer.speak_text(text)
+    # synthesizer.speak_text(text)
+    synthesizer.speak_ssml(ssml_string)
 
     return wavPath
+
+from . import anim
+
+def play_wav_files(attempt_number, base_path="scripts/recorded_show/", animator_function=None):
+    """
+    This will play all the WAV files in the attempt folder for the given attempt number.
+    """
+    # print current system path
+    print(f"Current system path: {os.getcwd()}")
+
+    pattern = re.compile(f"^Attempt {attempt_number}(\\b|[^\\\\/]*)")
+
+    folders = next(os.walk(base_path))[1]
+    attempt_folder = next((folder for folder in folders if pattern.match(folder)), None)
+
+    if attempt_folder:
+        attempt_path = os.path.join(base_path, attempt_folder)
+        wav_files = sorted([f for f in os.listdir(attempt_path) if f.endswith('.wav')],
+                           key=lambda x: int(re.search(r"(\d+)", x).group()))
+        try: 
+            for wav in wav_files:
+                file_path = os.path.join(attempt_path, wav)
+                print(f"Attempting to play: {file_path}")
+                # Load the audio file with librosa
+                data, samplerate = librosa.load(file_path, sr=None)  # Use the native sampling rate
+                # Write the data to a temporary file
+                temp_file = 'temp.wav'
+                sf.write(temp_file, data, samplerate)
+
+                # Now use pyaudio to play the temporary file
+                wf = wave.open(temp_file, 'rb')
+                p = pyaudio.PyAudio()
+                stream = p.open(format=p.get_format_from_width(wf.getsampwidth()),
+                                channels=wf.getnchannels(),
+                                rate=wf.getframerate(),
+                                output=True)
+                
+                # If an animator function is provided, call it with the wav path
+                # if animator_function:
+                #     animator_function(file_path, "/World/audio2face/PlayerStreaming")  # You need to define primitive_path somewhere
+                anim.animate(temp_file, "/World/audio2face/PlayerStreaming")
+
+                # data = wf.readframes(1024)
+                # while data:
+                #     stream.write(data)
+                #     data = wf.readframes(1024)
+
+                # Make sure to close the stream and the file before deleting the temp file
+                stream.stop_stream()
+                stream.close()
+                wf.close()  # Close the Wave_read object
+                p.terminate()
+
+                try:
+                    os.remove(temp_file)  # Delete the temporary file
+                except PermissionError as e:
+                    print(f"Error removing temp file: {e}")
+
+                time.sleep(2)  # Wait for 2 seconds between each file
+        except KeyboardInterrupt:
+            print("\nPlayback interrupted by user.")
+            # Add any necessary cleanup here, like stopping streams, closing files, etc.
+            if stream:
+                stream.stop_stream()
+                stream.close()
+            if p:
+                p.terminate()
+            print("Playback stopped.")
+
+    else:
+        print(f"No attempt folder found for number: {attempt_number}")
+
+
+
+# from elevenlabs import generate, play, save, set_api_key
+
+# set_api_key("9cecaa41213d3b3a26d36a02f79cac9a")
+
+# def generate_wav(text, speaker, lang=None, outputPath=None):
+#     speaker = "Bella"
+#     """Generates a wav file from text using the Eleven Labs API."""
+#     if outputPath is None:
+#         outputPath = "recording/ai/ai_bad_fixme"
+
+#     audio = generate(text, voice=speaker)  # generate the audio
+
+#     # Save the audio as an MP3 file first
+#     mp3_name = f"{int(time.time())}.mp3"
+#     mp3_path = f"{outputPath}/{mp3_name}"
+#     Path(outputPath).mkdir(parents=True, exist_ok=True)
+#     print(f"Trying to write to {mp3_path}")
+#     save(audio, mp3_path)
+#     print(f"Saved to {mp3_path}")
+
+#     # Wait until the MP3 file is generated
+#     while not os.path.exists(mp3_path):
+#         time.sleep(1)
+
+#     # Convert the MP3 to WAV with the desired properties
+#     wav_name = f"{int(time.time())}.wav"
+#     wav_path = f"{outputPath}/{wav_name}"
+#     print(f"Trying to write to {wav_path}")
+#     convert_to_wav(mp3_path, wav_path)
+
+#     # Remove the temporary MP3 file (optional)
+#     os.remove(mp3_path)
+
+#     print(f"{wav_path} is the final destination")
+#     return wav_path
+
+def convert_to_wav(input_file_path, output_file_path, sample_rate=16000, channels=1):
+    # Load the MP3 audio file using pydub
+    print(f"Converting {input_file_path} to {output_file_path}")
+    audio = AudioSegment.from_file(input_file_path, format="mp3")
+
+    # Set the sample width and frame rate to match the requirements
+    audio = audio.set_frame_rate(sample_rate).set_channels(channels).set_sample_width(2)
+
+    print(f"Exporting to {output_file_path}")
+    # Export the audio as WAV with wait=True to ensure file writing completion
+    audio.export(output_file_path, format='wav', parameters=['-ac', str(channels)], wait=True)
 
 def cleanup(wavPath, outputPath):
     """Deletes the temporary files in the wavPath and outputPath directories."""

@@ -1,21 +1,28 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+import sys
 import time
+import os
 import enum
 import logging
-import sys
-
+from dataclasses import dataclass
 from contextlib import contextmanager
-import os
 from typing import Optional, Any # This is support for type hints
 from log_calls import log_calls # For logging errors and stuff
 
 from .types import Character
 from . import nlp, audio, anim
 
+MAX_PROMPT_LENGTH = 2048
+PROMPT_LENGTH_THRESHOLD = MAX_PROMPT_LENGTH - 800
+PROMPT_LENGTH_FACTOR = 4
+
 @dataclass
 class Scene:
+    """
+    The Scene class is a dataclass that holds information about a scene, 
+    including the characters in it, and the history of the scene.
+    """
     id: int
     name: str
     description: str # conversation description
@@ -23,19 +30,31 @@ class Scene:
     text_only: bool
     history: str = ""
 
+    def __init__(self, id: int, name: str, description: str, characters: list[Character], text_only: bool):
+        self.id = id
+        self.name = name
+        self.description = description
+        self.characters = characters
+        self.text_only = text_only
+        self.history = ""
+
     def prompt_for_gpt3(self) -> str:
         """Return the entire prompt to GPT3."""
         char_descs = '\n'.join(c.desc for c in self.characters)
         return f"{char_descs}\n{self.history}"
 
-    def animate(self, character, charLine: str):
+    def animate(self, character, charLine: str, wavPath: Optional[str] = None):
         """Used to animate a specific character based on the text input
         onto a specific animation node's audio stream listener."""
         # Generate response
         updatedHistory = self.history+f"\n{character.name}:{charLine}\n"
         responseEmotion = nlp.get_emotion(charLine)
-        # Generate wav, selecting wav file
-        wavPath = audio.generate_wav(charLine, responseEmotion, lang="en-US", outputPath=f"/scripts/ai/ai_{self.name}")
+
+
+        # Only generate a wavPath unless one is not provided
+        if wavPath is None:
+            # Generate wav, selecting wav file
+            wavPath = audio.generate_wav(charLine, responseEmotion, lang="en-US", outputPath=f"/scripts/ai/ai_{self.name}")
 
         # Execute animation
         anim.animate(wavPath, character.primitivePath)
@@ -53,6 +72,14 @@ class Scene:
     def user_provided_input(self, said_what):
         """Add the user's input (as a ListenRecord) to the history."""
         self.report_histfrag(f"You: {said_what}")
+
+    def calculate_compression_ratio(self, prompt, prevlen):
+        """Calculate the compression ratio of the prompt."""
+        lp = len(prompt)
+        compression_ratio = 0
+        if lp != 0:
+            compression_ratio = prevlen / lp
+        return compression_ratio
 
     def make_speak(self, character, primitivePath=None) -> str:
         """Speak, from a character's perspective."""
@@ -87,6 +114,16 @@ class Scene:
             anim.animate(wavPath, primitivePath) # Execute animation
             # audio.cleanup(wavPath, outputPath) # Erases after speaking
 
+        # azure voices test list
+        azureVoices = ["en-US-TonyNeural",
+                       "en-US-AriaNeural",
+                        "en-US-JennyNeural",
+                        "en-US-GuyNeural",]
+
+        # FORCE ANIMATION
+        wavPath = audio.generate_wav(textResponse, azureVoices[2]) # Generate wav for animation
+        anim.animate(wavPath, primitivePath) # Execute animation
+        
         return textResponse
 
     def save_history(self, outputDir="recording/script_output/"):

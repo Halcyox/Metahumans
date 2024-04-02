@@ -122,7 +122,8 @@ def main():
     # Prim path of the Audio2Face Streaming Audio Player on the stage (were to push the audio data)
     instance_name = sys.argv[2]
 
-    data, samplerate = soundfile.read(audio_fpath, dtype="float32")
+    data, samplerate = soundfile.read(audio_fpath, dtype="float32") # original line
+    # data, samplerate = soundfile.read(audio_fpath, dtype="int16") # test line
 
     # Only Mono audio is supported
     if len(data.shape) > 1:
